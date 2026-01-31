@@ -94,11 +94,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
                 if (!vevent) return null;
 
+                const dtstart = vevent.getFirstPropertyValue('dtstart');
+                const dtend = vevent.getFirstPropertyValue('dtend');
+
                 return {
                     uid: vevent.getFirstPropertyValue('uid'),
                     summary: vevent.getFirstPropertyValue('summary') || 'Untitled Event',
-                    start: vevent.getFirstPropertyValue('dtstart')?.toJSDate() || new Date(),
-                    end: vevent.getFirstPropertyValue('dtend')?.toJSDate() || new Date(),
+                    start: (dtstart && typeof dtstart === 'object' && 'toJSDate' in dtstart) ? dtstart.toJSDate() : new Date(),
+                    end: (dtend && typeof dtend === 'object' && 'toJSDate' in dtend) ? dtend.toJSDate() : new Date(),
                     description: vevent.getFirstPropertyValue('description') || '',
                     isRecurring: vevent.hasProperty('rrule')
                 };
