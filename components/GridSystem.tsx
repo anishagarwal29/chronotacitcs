@@ -91,18 +91,9 @@ const GridSystem: React.FC<GridSystemProps> = ({
               <div
                 key={key}
                 onClick={() => onSlotClick(dayIndex, hour)}
-                className={`
-                  relative h-16 border-b border-r border-gray-800/50 transition-colors
-                  ${!visible ? 'bg-black/80 backdrop-blur-sm cursor-help' : 'hover:bg-white/5 cursor-pointer'}
-                `}
-              >
-                {!visible && (
-                  <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
-                    <span className="text-[10px] tracking-[4px] text-gray-500">///</span>
-                  </div>
-                )}
+                className="relative h-16 border-b border-r border-gray-800/50 transition-colors hover:bg-white/5 cursor-pointer"
 
-                {visible && cellUnits.map(unit => (
+                {cellUnits.map(unit => (
                   <TacticalUnitComponent
                     key={unit.id}
                     unit={unit}
@@ -111,11 +102,12 @@ const GridSystem: React.FC<GridSystemProps> = ({
                   />
                 ))}
               </div>
-            );
+      );
           })}
-        </React.Fragment>
-      ))}
-    </div>
+    </React.Fragment>
+  ))
+}
+    </div >
   );
 };
 
