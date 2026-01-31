@@ -92,7 +92,7 @@ const GridSystem: React.FC<GridSystemProps> = ({
                 key={key}
                 onClick={() => onSlotClick(dayIndex, hour)}
                 className="relative h-16 border-b border-r border-gray-800/50 transition-colors hover:bg-white/5 cursor-pointer"
-
+              >
                 {cellUnits.map(unit => (
                   <TacticalUnitComponent
                     key={unit.id}
@@ -102,11 +102,11 @@ const GridSystem: React.FC<GridSystemProps> = ({
                   />
                 ))}
               </div>
-      );
+            );
           })}
-    </React.Fragment>
-  ))
-}
+        </React.Fragment>
+      ))
+      }
     </div >
   );
 };
