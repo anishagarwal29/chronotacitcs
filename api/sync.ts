@@ -1,4 +1,3 @@
-```typescript
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import ICAL from 'ical.js';
 
@@ -219,4 +218,3 @@ res.status(200).json(events);
     });
 }
 }
-```
