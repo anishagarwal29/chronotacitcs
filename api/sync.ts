@@ -144,32 +144,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const calendarListXml = await calendarListResponse.text();
 
-    // Find first calendar URL (look for <resourcetype> containing <calendar/>)
+    // Find ALL calendar URLs (not just the first one)
     const calendarMatches = calendarListXml.matchAll(/<response[^>]*>([\s\S]*?)<\/response>/gi);
-    let targetCalendarUrl: string | null = null;
+    const calendarUrls: string[] = [];
 
     for (const match of calendarMatches) {
       const responseBlock = match[1];
       if (responseBlock.includes('<calendar') || responseBlock.includes('<C:calendar')) {
         const hrefMatch = responseBlock.match(/<href[^>]*>([^<]+)<\/href>/i);
         if (hrefMatch) {
-          targetCalendarUrl = hrefMatch[1];
-          if (!targetCalendarUrl.startsWith('http')) {
-            targetCalendarUrl = 'https://caldav.icloud.com' + targetCalendarUrl;
+          let url = hrefMatch[1];
+          if (!url.startsWith('http')) {
+            url = 'https://caldav.icloud.com' + url;
           }
-          break;
+          calendarUrls.push(url);
         }
       }
     }
 
-    if (!targetCalendarUrl) {
+    if (calendarUrls.length === 0) {
       throw new Error('No calendars found');
     }
 
-    console.log('Target calendar URL:', targetCalendarUrl);
+    console.log(`Found ${calendarUrls.length} calendars`);
 
-    // Step 4: Fetch events from the calendar
-    console.log('Step 4: Fetching events...');
+    // Step 4: Fetch events from ALL calendars
+    console.log('Step 4: Fetching events from all calendars...');
     const now = new Date();
     const startDate = new Date(now);
     startDate.setDate(now.getDate() - 1);
@@ -192,62 +192,70 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   </C:filter>
 </C:calendar-query>`;
 
-    const response = await fetch(targetCalendarUrl, {
-      method: 'REPORT',
-      headers: {
-        'Authorization': authHeader,
-        'Content-Type': 'application/xml; charset=utf-8',
-        'Depth': '1'
-      },
-      body: reportBody
-    });
+    // Fetch events from all calendars in parallel
+    const allEvents = [];
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('REPORT error:', errorText);
-      throw new Error(`REPORT failed: ${response.status} ${response.statusText}`);
-    }
+    for (const calendarUrl of calendarUrls) {
+      console.log('Fetching from calendar:', calendarUrl);
 
-    const xmlText = await response.text();
-    const calendarDataMatches = xmlText.match(/<C:calendar-data>([\s\S]*?)<\/C:calendar-data>/gi);
+      const response = await fetch(calendarUrl, {
+        method: 'REPORT',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Depth': '1'
+        },
+        body: reportBody
+      });
 
-    if (!calendarDataMatches || calendarDataMatches.length === 0) {
-      console.log('No events found');
-      return res.status(200).json([]);
-    }
-
-    console.log('Found', calendarDataMatches.length, 'events');
-
-    const events = calendarDataMatches.map(match => {
-      try {
-        const icsData = match.replace(/<\/?C:calendar-data>/gi, '').trim();
-        const jcal = ICAL.parse(icsData);
-        const comp = new ICAL.Component(jcal);
-        const vevent = comp.getFirstSubcomponent('vevent');
-
-        if (!vevent) return null;
-
-        const dtstart = vevent.getFirstPropertyValue('dtstart');
-        const dtend = vevent.getFirstPropertyValue('dtend');
-
-        return {
-          uid: vevent.getFirstPropertyValue('uid'),
-          summary: vevent.getFirstPropertyValue('summary') || 'Untitled Event',
-          start: (dtstart && typeof dtstart === 'object' && 'toJSDate' in dtstart) ? dtstart.toJSDate() : new Date(),
-          end: (dtend && typeof dtend === 'object' && 'toJSDate' in dtend) ? dtend.toJSDate() : new Date(),
-          description: vevent.getFirstPropertyValue('description') || '',
-          isRecurring: vevent.hasProperty('rrule')
-        };
-      } catch (err) {
-        console.error('Error parsing event:', err);
-        return null;
+      if (!response.ok) {
+        console.warn(`REPORT failed for ${calendarUrl}: ${response.status}`);
+        continue; // Skip this calendar and try the next one
       }
-    }).filter((e): e is NonNullable<typeof e> => e !== null);
 
-    events.sort((a, b) => a.start.getTime() - b.start.getTime());
+      const xmlText = await response.text();
+      const calendarDataMatches = xmlText.match(/<C:calendar-data>([\s\S]*?)<\/C:calendar-data>/gi);
 
-    console.log('Returning', events.length, 'events');
-    res.status(200).json(events);
+      if (!calendarDataMatches || calendarDataMatches.length === 0) {
+        console.log(`No events in calendar: ${calendarUrl}`);
+        continue;
+      }
+
+      console.log(`Found ${calendarDataMatches.length} events in calendar`);
+
+      const events = calendarDataMatches.map(match => {
+        try {
+          const icsData = match.replace(/<\/?C:calendar-data>/gi, '').trim();
+          const jcal = ICAL.parse(icsData);
+          const comp = new ICAL.Component(jcal);
+          const vevent = comp.getFirstSubcomponent('vevent');
+
+          if (!vevent) return null;
+
+          const dtstart = vevent.getFirstPropertyValue('dtstart');
+          const dtend = vevent.getFirstPropertyValue('dtend');
+
+          return {
+            uid: vevent.getFirstPropertyValue('uid'),
+            summary: vevent.getFirstPropertyValue('summary') || 'Untitled Event',
+            start: (dtstart && typeof dtstart === 'object' && 'toJSDate' in dtstart) ? dtstart.toJSDate() : new Date(),
+            end: (dtend && typeof dtend === 'object' && 'toJSDate' in dtend) ? dtend.toJSDate() : new Date(),
+            description: vevent.getFirstPropertyValue('description') || '',
+            isRecurring: vevent.hasProperty('rrule')
+          };
+        } catch (err) {
+          console.error('Error parsing event:', err);
+          return null;
+        }
+      }).filter((e): e is NonNullable<typeof e> => e !== null);
+
+      allEvents.push(...events);
+    }
+
+    allEvents.sort((a, b) => a.start.getTime() - b.start.getTime());
+
+    console.log(`Returning ${allEvents.length} total events from all calendars`);
+    res.status(200).json(allEvents);
 
   } catch (error: any) {
     console.error("Sync Error:", error);
