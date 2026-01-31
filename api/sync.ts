@@ -24,63 +24,103 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const password = process.env.ICLOUD_PASSWORD;
 
   if (!email || !password) {
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Missing Server Configuration',
       details: 'ICLOUD_EMAIL or ICLOUD_PASSWORD environment variables are not set'
     });
   }
 
   try {
-    const authHeader = 'Basic ' + Buffer.from(`${ email }:${ password } `).toString('base64');
-    
-    // Step 1: Discover calendar-home-set using PROPFIND
-    console.log('Step 1: Discovering calendar home...');
-    const principalUrl = 'https://caldav.icloud.com/';
-    
-    const propfindBody = `<? xml version = "1.0" encoding = "utf-8" ?>
-    <d: propfind xmlns: d = "DAV:" xmlns: c = "urn:ietf:params:xml:ns:caldav" >
-        <d: prop >
-            <c: calendar - home - set />
-                </d:prop>
-                </d:propfind>`;
+    const authHeader = 'Basic ' + Buffer.from(`${email}:${password}`).toString('base64');
 
-const propfindResponse = await fetch(principalUrl, {
-    method: 'PROPFIND',
-    headers: {
+    // Step 1: Discover current-user-principal
+    console.log('Step 1: Discovering user principal...');
+    const principalUrl = 'https://caldav.icloud.com/';
+
+    const userPrincipalBody = `<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:">
+  <d:prop>
+    <d:current-user-principal />
+  </d:prop>
+</d:propfind>`;
+
+    const userPrincipalResponse = await fetch(principalUrl, {
+      method: 'PROPFIND',
+      headers: {
         'Authorization': authHeader,
         'Content-Type': 'application/xml; charset=utf-8',
         'Depth': '0'
-    },
-    body: propfindBody
-});
+      },
+      body: userPrincipalBody
+    });
 
-if (!propfindResponse.ok) {
-    throw new Error(`PROPFIND failed: ${propfindResponse.status} ${propfindResponse.statusText}`);
-}
-
-const propfindXml = await propfindResponse.text();
-console.log('PROPFIND response received');
-
-// Extract calendar-home-set URL from XML
-const calendarHomeMatch = propfindXml.match(/<calendar-home-set[^>]*>[\s\S]*?<href[^>]*>([^<]+)<\/href>/i);
-
-let calendarHomeUrl: string;
-if (!calendarHomeMatch) {
-    // Fallback to constructed URL
-    const username = email.split('@')[0];
-    calendarHomeUrl = `https://caldav.icloud.com/${username}/calendars/`;
-} else {
-    calendarHomeUrl = calendarHomeMatch[1];
-    if (!calendarHomeUrl.startsWith('http')) {
-        calendarHomeUrl = 'https://caldav.icloud.com' + calendarHomeUrl;
+    if (!userPrincipalResponse.ok) {
+      throw new Error(`User principal discovery failed: ${userPrincipalResponse.status}`);
     }
-}
 
-console.log('Calendar home URL:', calendarHomeUrl);
+    const userPrincipalXml = await userPrincipalResponse.text();
+    console.log('User principal response received');
 
-// Step 2: Get list of calendars
-console.log('Step 2: Fetching calendar list...');
-const calendarListBody = `<?xml version="1.0" encoding="utf-8" ?>
+    // Extract current-user-principal URL
+    const principalMatch = userPrincipalXml.match(/<current-user-principal[^>]*>[\s\S]*?<href[^>]*>([^<]+)<\/href>/i);
+
+    if (!principalMatch) {
+      throw new Error('Could not find user principal');
+    }
+
+    let userPrincipalUrl = principalMatch[1];
+    if (!userPrincipalUrl.startsWith('http')) {
+      userPrincipalUrl = 'https://caldav.icloud.com' + userPrincipalUrl;
+    }
+
+    console.log('User principal URL:', userPrincipalUrl);
+
+    // Step 2: Discover calendar-home-set from user principal
+    console.log('Step 2: Discovering calendar home...');
+    const calendarHomeBody = `<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <c:calendar-home-set />
+  </d:prop>
+</d:propfind>`;
+
+    const calendarHomeResponse = await fetch(userPrincipalUrl, {
+      method: 'PROPFIND',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Depth': '0'
+      },
+      body: calendarHomeBody
+    });
+
+    if (!calendarHomeResponse.ok) {
+      throw new Error(`Calendar home discovery failed: ${calendarHomeResponse.status}`);
+    }
+
+    const calendarHomeXml = await calendarHomeResponse.text();
+    console.log('Calendar home response received');
+
+    // Extract calendar-home-set URL
+    const calendarHomeMatch = calendarHomeXml.match(/<calendar-home-set[^>]*>[\s\S]*?<href[^>]*>([^<]+)<\/href>/i);
+
+    let calendarHomeUrl: string;
+    if (!calendarHomeMatch) {
+      // Fallback to constructed URL
+      const username = email.split('@')[0];
+      calendarHomeUrl = `https://caldav.icloud.com/${username}/calendars/`;
+    } else {
+      calendarHomeUrl = calendarHomeMatch[1];
+      if (!calendarHomeUrl.startsWith('http')) {
+        calendarHomeUrl = 'https://caldav.icloud.com' + calendarHomeUrl;
+      }
+    }
+
+    console.log('Calendar home URL:', calendarHomeUrl);
+
+    // Step 3: Get list of calendars
+    console.log('Step 3: Fetching calendar list...');
+    const calendarListBody = `<?xml version="1.0" encoding="utf-8" ?>
 <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
   <d:prop>
     <d:displayname />
@@ -88,55 +128,55 @@ const calendarListBody = `<?xml version="1.0" encoding="utf-8" ?>
   </d:prop>
 </d:propfind>`;
 
-const calendarListResponse = await fetch(calendarHomeUrl, {
-    method: 'PROPFIND',
-    headers: {
+    const calendarListResponse = await fetch(calendarHomeUrl, {
+      method: 'PROPFIND',
+      headers: {
         'Authorization': authHeader,
         'Content-Type': 'application/xml; charset=utf-8',
         'Depth': '1'
-    },
-    body: calendarListBody
-});
+      },
+      body: calendarListBody
+    });
 
-if (!calendarListResponse.ok) {
-    throw new Error(`Calendar list fetch failed: ${calendarListResponse.status}`);
-}
+    if (!calendarListResponse.ok) {
+      throw new Error(`Calendar list fetch failed: ${calendarListResponse.status}`);
+    }
 
-const calendarListXml = await calendarListResponse.text();
+    const calendarListXml = await calendarListResponse.text();
 
-// Find first calendar URL (look for <resourcetype> containing <calendar/>)
-const calendarMatches = calendarListXml.matchAll(/<response[^>]*>([\s\S]*?)<\/response>/gi);
-let targetCalendarUrl: string | null = null;
+    // Find first calendar URL (look for <resourcetype> containing <calendar/>)
+    const calendarMatches = calendarListXml.matchAll(/<response[^>]*>([\s\S]*?)<\/response>/gi);
+    let targetCalendarUrl: string | null = null;
 
-for (const match of calendarMatches) {
-    const responseBlock = match[1];
-    if (responseBlock.includes('<calendar') || responseBlock.includes('<C:calendar')) {
+    for (const match of calendarMatches) {
+      const responseBlock = match[1];
+      if (responseBlock.includes('<calendar') || responseBlock.includes('<C:calendar')) {
         const hrefMatch = responseBlock.match(/<href[^>]*>([^<]+)<\/href>/i);
         if (hrefMatch) {
-            targetCalendarUrl = hrefMatch[1];
-            if (!targetCalendarUrl.startsWith('http')) {
-                targetCalendarUrl = 'https://caldav.icloud.com' + targetCalendarUrl;
-            }
-            break;
+          targetCalendarUrl = hrefMatch[1];
+          if (!targetCalendarUrl.startsWith('http')) {
+            targetCalendarUrl = 'https://caldav.icloud.com' + targetCalendarUrl;
+          }
+          break;
         }
+      }
     }
-}
 
-if (!targetCalendarUrl) {
-    throw new Error('No calendars found');
-}
+    if (!targetCalendarUrl) {
+      throw new Error('No calendars found');
+    }
 
-console.log('Target calendar URL:', targetCalendarUrl);
+    console.log('Target calendar URL:', targetCalendarUrl);
 
-// Step 3: Fetch events from the calendar
-console.log('Step 3: Fetching events...');
-const now = new Date();
-const startDate = new Date(now);
-startDate.setDate(now.getDate() - 1);
-const endDate = new Date(now);
-endDate.setDate(now.getDate() + 7);
+    // Step 4: Fetch events from the calendar
+    console.log('Step 4: Fetching events...');
+    const now = new Date();
+    const startDate = new Date(now);
+    startDate.setDate(now.getDate() - 1);
+    const endDate = new Date(now);
+    endDate.setDate(now.getDate() + 7);
 
-const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
+    const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
 <C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
   <D:prop>
     <D:getetag/>
@@ -152,34 +192,34 @@ const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
   </C:filter>
 </C:calendar-query>`;
 
-const response = await fetch(targetCalendarUrl, {
-    method: 'REPORT',
-    headers: {
+    const response = await fetch(targetCalendarUrl, {
+      method: 'REPORT',
+      headers: {
         'Authorization': authHeader,
         'Content-Type': 'application/xml; charset=utf-8',
         'Depth': '1'
-    },
-    body: reportBody
-});
+      },
+      body: reportBody
+    });
 
-if (!response.ok) {
-    const errorText = await response.text();
-    console.error('REPORT error:', errorText);
-    throw new Error(`REPORT failed: ${response.status} ${response.statusText}`);
-}
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('REPORT error:', errorText);
+      throw new Error(`REPORT failed: ${response.status} ${response.statusText}`);
+    }
 
-const xmlText = await response.text();
-const calendarDataMatches = xmlText.match(/<C:calendar-data>([\s\S]*?)<\/C:calendar-data>/gi);
+    const xmlText = await response.text();
+    const calendarDataMatches = xmlText.match(/<C:calendar-data>([\s\S]*?)<\/C:calendar-data>/gi);
 
-if (!calendarDataMatches || calendarDataMatches.length === 0) {
-    console.log('No events found');
-    return res.status(200).json([]);
-}
+    if (!calendarDataMatches || calendarDataMatches.length === 0) {
+      console.log('No events found');
+      return res.status(200).json([]);
+    }
 
-console.log('Found', calendarDataMatches.length, 'events');
+    console.log('Found', calendarDataMatches.length, 'events');
 
-const events = calendarDataMatches.map(match => {
-    try {
+    const events = calendarDataMatches.map(match => {
+      try {
         const icsData = match.replace(/<\/?C:calendar-data>/gi, '').trim();
         const jcal = ICAL.parse(icsData);
         const comp = new ICAL.Component(jcal);
@@ -191,30 +231,30 @@ const events = calendarDataMatches.map(match => {
         const dtend = vevent.getFirstPropertyValue('dtend');
 
         return {
-            uid: vevent.getFirstPropertyValue('uid'),
-            summary: vevent.getFirstPropertyValue('summary') || 'Untitled Event',
-            start: (dtstart && typeof dtstart === 'object' && 'toJSDate' in dtstart) ? dtstart.toJSDate() : new Date(),
-            end: (dtend && typeof dtend === 'object' && 'toJSDate' in dtend) ? dtend.toJSDate() : new Date(),
-            description: vevent.getFirstPropertyValue('description') || '',
-            isRecurring: vevent.hasProperty('rrule')
+          uid: vevent.getFirstPropertyValue('uid'),
+          summary: vevent.getFirstPropertyValue('summary') || 'Untitled Event',
+          start: (dtstart && typeof dtstart === 'object' && 'toJSDate' in dtstart) ? dtstart.toJSDate() : new Date(),
+          end: (dtend && typeof dtend === 'object' && 'toJSDate' in dtend) ? dtend.toJSDate() : new Date(),
+          description: vevent.getFirstPropertyValue('description') || '',
+          isRecurring: vevent.hasProperty('rrule')
         };
-    } catch (err) {
+      } catch (err) {
         console.error('Error parsing event:', err);
         return null;
-    }
-}).filter((e): e is NonNullable<typeof e> => e !== null);
+      }
+    }).filter((e): e is NonNullable<typeof e> => e !== null);
 
-events.sort((a, b) => a.start.getTime() - b.start.getTime());
+    events.sort((a, b) => a.start.getTime() - b.start.getTime());
 
-console.log('Returning', events.length, 'events');
-res.status(200).json(events);
+    console.log('Returning', events.length, 'events');
+    res.status(200).json(events);
 
   } catch (error: any) {
     console.error("Sync Error:", error);
     res.status(500).json({
-        error: 'Failed to sync with iCloud',
-        details: error.message,
-        stack: error.stack
+      error: 'Failed to sync with iCloud',
+      details: error.message,
+      stack: error.stack
     });
-}
+  }
 }
