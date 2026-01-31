@@ -223,9 +223,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       console.log(`Found ${calendarDataMatches.length} events in calendar`);
 
-      const events = calendarDataMatches.map(match => {
+      const events = calendarDataMatches.map((match, idx) => {
         try {
-          const icsData = match.replace(/<\/?C:calendar-data>/gi, '').trim();
+          const icsData = match
+            .replace(/<\/?[Cc]:?calendar-data[^>]*>/gi, '')
+            .trim();
+
+          console.log(`Event ${idx + 1}: ${icsData.substring(0, 100)}...`);
           const jcal = ICAL.parse(icsData);
           const comp = new ICAL.Component(jcal);
           const vevent = comp.getFirstSubcomponent('vevent');
