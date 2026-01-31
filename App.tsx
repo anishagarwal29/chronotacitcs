@@ -244,7 +244,7 @@ const App: React.FC = () => {
 
           {/* Sync Status Indicator */}
           {gameState.lastSynced && (
-            <div className="absolute top-4 left-4 z-50 flex items-center gap-2 pointer-events-none">
+            <div className="absolute bottom-4 left-4 z-50 flex items-center gap-2 pointer-events-none">
               <div className={`w-2 h-2 rounded-full ${syncMode === 'LIVE' ? 'bg-tactical-green' : 'bg-yellow-500'} animate-pulse`}></div>
               <span className={`text-[10px] ${syncMode === 'LIVE' ? 'text-tactical-green' : 'text-yellow-500'} font-mono`}>
                 {syncMode === 'LIVE' ? 'LIVE FEED CONNECTED' : 'SIMULATION MODE'}

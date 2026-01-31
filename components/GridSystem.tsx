@@ -12,9 +12,9 @@ interface GridSystemProps {
   fogEnabled: boolean;
 }
 
-const GridSystem: React.FC<GridSystemProps> = ({ 
-  units, 
-  onUnitSelect, 
+const GridSystem: React.FC<GridSystemProps> = ({
+  units,
+  onUnitSelect,
   onSlotClick,
   selectedUnitId,
   scoutedSectors,
@@ -31,23 +31,23 @@ const GridSystem: React.FC<GridSystemProps> = ({
 
   const isScouted = (dayIndex: number, hour: number) => {
     if (!fogEnabled) return true;
-    
+
     // Check if explicitly scouted
     if (scoutedSectors.includes(`${dayIndex}-${hour}`)) return true;
-    
+
     // Check if near current time (simple proximity visibility)
     const now = new Date();
     const currentDay = now.getDay();
     const currentHour = now.getHours();
-    
+
     // Visible if it's today and within +/- 2 hours
     if (dayIndex === currentDay && Math.abs(hour - currentHour) <= 2) return true;
 
     // Visible if a unit exists here
     const hasUnit = units.some(u => {
-        const uDay = u.startTime.getDay();
-        const uHour = u.startTime.getHours();
-        return uDay === dayIndex && uHour <= hour && (uHour + u.durationHours) > hour;
+      const uDay = u.startTime.getDay();
+      const uHour = u.startTime.getHours();
+      return uDay === dayIndex && uHour <= hour && (uHour + u.durationHours) > hour;
     });
 
     return hasUnit;
@@ -57,11 +57,21 @@ const GridSystem: React.FC<GridSystemProps> = ({
     <div className="grid grid-cols-[50px_repeat(7,1fr)] bg-tactical-grid border border-gray-800 rounded-lg overflow-hidden select-none">
       {/* Header Row */}
       <div className="p-2 border-b border-r border-gray-800 bg-tactical-bg"></div>
-      {DAYS_OF_WEEK.map((day, i) => (
-        <div key={day} className={`p-2 text-center text-xs font-bold border-b border-gray-800 bg-tactical-bg ${i === new Date().getDay() ? 'text-tactical-green' : 'text-gray-500'}`}>
-          {day}
-        </div>
-      ))}
+      {DAYS_OF_WEEK.map((day, i) => {
+        const today = new Date();
+        const currentDay = today.getDay();
+        const dayDiff = i - currentDay;
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() + dayDiff);
+        const dateStr = `${targetDate.getMonth() + 1}/${targetDate.getDate()}`;
+
+        return (
+          <div key={day} className={`p-2 text-center text-xs font-bold border-b border-gray-800 bg-tactical-bg ${i === currentDay ? 'text-tactical-green' : 'text-gray-500'}`}>
+            <div>{day}</div>
+            <div className="text-[10px] font-normal opacity-60">{dateStr}</div>
+          </div>
+        );
+      })}
 
       {/* Grid Body */}
       {HOURS_OF_DAY.map((hour) => (
@@ -70,7 +80,7 @@ const GridSystem: React.FC<GridSystemProps> = ({
           <div className="h-16 border-r border-b border-gray-800 flex items-center justify-center text-[10px] text-gray-500 bg-tactical-bg font-mono">
             {hour.toString().padStart(2, '0')}:00
           </div>
-          
+
           {/* Day Cells */}
           {DAYS_OF_WEEK.map((_, dayIndex) => {
             const cellUnits = getUnitsForCell(dayIndex, hour);
@@ -78,7 +88,7 @@ const GridSystem: React.FC<GridSystemProps> = ({
             const key = `${dayIndex}-${hour}`;
 
             return (
-              <div 
+              <div
                 key={key}
                 onClick={() => onSlotClick(dayIndex, hour)}
                 className={`
@@ -88,10 +98,10 @@ const GridSystem: React.FC<GridSystemProps> = ({
               >
                 {!visible && (
                   <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
-                     <span className="text-[10px] tracking-[4px] text-gray-500">///</span>
+                    <span className="text-[10px] tracking-[4px] text-gray-500">///</span>
                   </div>
                 )}
-                
+
                 {visible && cellUnits.map(unit => (
                   <TacticalUnitComponent
                     key={unit.id}
