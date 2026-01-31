@@ -31,18 +31,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        // Step 1: Get the principal URL
-        const principalUrl = `https://caldav.icloud.com/`;
+        // iCloud CalDAV URL structure: https://caldav.icloud.com/{apple-id-prefix}/calendars/
+        // For anishagarwal.inbox@gmail.com, we need just the part before @
+        const username = email.includes('@icloud.com') ? email.split('@')[0] : email.split('@')[0];
 
-        // Step 2: Discover calendar home
-        const calendarHomeUrl = `https://caldav.icloud.com/${email.split('@')[0]}/calendars/`;
+        // Try the home calendar first (most common)
+        const calendarUrl = `https://caldav.icloud.com/${username}/calendars/home/`;
 
-        // Step 3: Fetch calendar data using REPORT method
         const now = new Date();
         const startDate = new Date(now);
-        startDate.setDate(now.getDate() - 1); // Yesterday
+        startDate.setDate(now.getDate() - 1);
         const endDate = new Date(now);
-        endDate.setDate(now.getDate() + 7); // Next 7 days
+        endDate.setDate(now.getDate() + 7);
 
         const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
 <C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
@@ -62,7 +62,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const authHeader = 'Basic ' + Buffer.from(`${email}:${password}`).toString('base64');
 
-        const response = await fetch(calendarHomeUrl, {
+        console.log('Attempting CalDAV request to:', calendarUrl);
+
+        const response = await fetch(calendarUrl, {
             method: 'REPORT',
             headers: {
                 'Authorization': authHeader,
@@ -72,18 +74,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: reportBody
         });
 
+        console.log('CalDAV response status:', response.status);
+
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('CalDAV error response:', errorText);
             throw new Error(`CalDAV request failed: ${response.status} ${response.statusText}`);
         }
 
         const xmlText = await response.text();
+        console.log('Received XML response, length:', xmlText.length);
 
         // Parse the XML response to extract calendar data
         const calendarDataMatches = xmlText.match(/<C:calendar-data>([\s\S]*?)<\/C:calendar-data>/g);
 
-        if (!calendarDataMatches) {
+        if (!calendarDataMatches || calendarDataMatches.length === 0) {
+            console.log('No calendar events found in response');
             return res.status(200).json([]);
         }
+
+        console.log('Found', calendarDataMatches.length, 'calendar events');
 
         const events = calendarDataMatches.map(match => {
             try {
@@ -111,16 +121,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
         }).filter((e): e is NonNullable<typeof e> => e !== null);
 
-        // Sort by start time
         events.sort((a, b) => a.start.getTime() - b.start.getTime());
 
+        console.log('Returning', events.length, 'parsed events');
         res.status(200).json(events);
 
     } catch (error: any) {
         console.error("Sync Error:", error);
         res.status(500).json({
             error: 'Failed to sync with iCloud',
-            details: error.message
+            details: error.message,
+            stack: error.stack
         });
     }
 }
