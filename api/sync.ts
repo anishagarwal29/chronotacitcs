@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import * as ICAL from 'ical.js';
+import ICAL from 'ical.js';
 
 /**
  * Serverless function to sync with iCloud Calendar via CalDAV
