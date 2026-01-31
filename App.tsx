@@ -35,7 +35,7 @@ const App: React.FC = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
 
-      const response = await fetch('http://localhost:3001/api/calendar/sync', {
+      const response = await fetch('/api/sync', {
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -212,8 +212,8 @@ const App: React.FC = () => {
               onClick={handleICloudSync}
               disabled={isSyncing}
               className={`px-3 py-1 border text-xs font-mono transition-colors flex items-center gap-2 ${isSyncing
-                  ? 'border-gray-600 text-gray-600 cursor-not-allowed'
-                  : 'border-tactical-blue text-tactical-blue hover:bg-tactical-blue hover:text-black'
+                ? 'border-gray-600 text-gray-600 cursor-not-allowed'
+                : 'border-tactical-blue text-tactical-blue hover:bg-tactical-blue hover:text-black'
                 }`}
             >
               {isSyncing ? 'UPLINKING...' : 'SYNC ICLOUD'}
