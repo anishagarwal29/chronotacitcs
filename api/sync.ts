@@ -172,9 +172,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Step 4: Fetching events from all calendars...');
     const now = new Date();
     const startDate = new Date(now);
-    startDate.setDate(now.getDate() - 1);
+    startDate.setDate(now.getDate() - 30); // 30 days ago
     const endDate = new Date(now);
-    endDate.setDate(now.getDate() + 7);
+    endDate.setDate(now.getDate() + 30); // 30 days in future
 
     const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
 <C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">

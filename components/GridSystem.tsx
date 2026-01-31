@@ -84,7 +84,6 @@ const GridSystem: React.FC<GridSystemProps> = ({
           {/* Day Cells */}
           {DAYS_OF_WEEK.map((_, dayIndex) => {
             const cellUnits = getUnitsForCell(dayIndex, hour);
-            const visible = isScouted(dayIndex, hour);
             const key = `${dayIndex}-${hour}`;
 
             return (
